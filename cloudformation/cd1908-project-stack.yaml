@@ -4,6 +4,7 @@ Parameters:
   VpcName:
     Description: A name that is prefixed to resource names
     Type: String
+    Default: "PrimaryVPC"
 
   VpcCIDR:
     Description: Please enter the IP range (CIDR notation) for this VPC
@@ -30,6 +31,22 @@ Parameters:
     Type: String
     Default: 10.1.21.0/24
 
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.micro  
+    Description: RDS instance class
+
+  DBUsername:
+    Type: String
+    Description: Database admin account username
+    Default: "admin"
+
+  DBPassword:
+    Type: String
+    Description: Database admin account password
+    NoEcho: true
+    Default: "1234567890"
+
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
@@ -50,9 +67,9 @@ Metadata:
 
     ParameterLabels:
       VpcName:
-        default: "VPC Name"
+        default: "Primary VPC"
       VpcCIDR:
-        default: "VPC CIDR block"
+        default: "Primary VPC CIDR block"
       PublicSubnet1CIDR:
         default: "Public Subnet 1"
       PublicSubnet2CIDR:
@@ -171,6 +188,18 @@ Resources:
         - Key: Name
           Value: !Sub ${VpcName} Private Routes
 
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet1
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet2
+
   DatabaseSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -203,6 +232,34 @@ Resources:
         - Key: Name
           Value: UDARR-Application
 
+  RDSSubnetGroupActive:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: "Subnet group for RDS in Active Region"
+      DBSubnetGroupName: !Sub "${AWS::StackName}-primary-active-subnet-group"
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-Active-PrimarySubnetGroup"
+
+  RDSDatabase:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceClass: !Ref DBInstanceClass
+      DBInstanceIdentifier: "udacity"
+      Engine: mysql
+      EngineVersion: "8.0"  
+      MultiAZ: true
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      DBName: "udacity"
+      DBSubnetGroupName: !Ref RDSSubnetGroupActive
+      VPCSecurityGroups:
+        - !Ref DatabaseSecurityGroup
+      AllocatedStorage: "20"  
+
 Outputs:
   VPC:
     Description: VPC ID
@@ -223,3 +280,7 @@ Outputs:
   ApplicationSecurityGroup:
     Description: ID of the EC2 instance security group
     Value: !Ref ApplicationSecurityGroup
+
+  RDSDatabaseArn:
+    Description: ID of the RDS(mysql)
+    Value: !Sub "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:${RDSDatabase}"
